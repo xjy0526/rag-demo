@@ -30,6 +30,9 @@ Patterns:
 - "show", "diagram", "figure", "visual", "look like" → IMAGE
 - "revenue", "statistics", "percentage", "how many", "numbers", "data" → TABLE
 - "explain", "what is", "describe", "summarise" → TEXT
+- 中文里的“图、图片、图表、流程图、示意图、长什么样” → IMAGE
+- 中文里的“表格、数据、数量、比例、几步、多少、统计、对比” → TABLE
+- 中文里的“解释、总结、是什么、怎么做、步骤、流程” → TEXT
 - broad/complex questions → ALL
 
 Respond ONLY with valid JSON: {{"types": ["TEXT"]}}

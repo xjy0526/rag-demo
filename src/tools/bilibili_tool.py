@@ -187,7 +187,8 @@ def normalize_bilibili_url(raw_text: str) -> str:
     else:
         match = re.search(r"(www\.(?:bilibili\.com|b23\.tv)/[^\s]+)", text, flags=re.IGNORECASE)
         if match:
-            candidate = f"https://{match.group(1).strip('()[]{}<>.,!?\"\'')}"
+            cleaned = match.group(1).strip("()[]{}<>.,!?\"'")
+            candidate = f"https://{cleaned}"
         else:
             raise ValueError("未能从输入内容中识别出有效的哔哩哔哩链接。")
 

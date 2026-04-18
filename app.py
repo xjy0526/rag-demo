@@ -1,16 +1,20 @@
 """
-app.py — 基于 Streamlit 的多模态 RAG 研究助手。
+app.py — 基于 Streamlit 的 Multi-Demo。
 """
 
+import html as html_lib
 import os
 import sys
 import traceback
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.set_page_config(
-    page_title="多模态 RAG 研究助手",
+    page_title="Multi-Demo",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -23,10 +27,12 @@ for d in ["./data/chroma_db", "./data/uploads", "./data/extracted/images", "./da
 
 
 def get_api_keys() -> dict:
-    """Load API keys from Streamlit secrets or session state inputs."""
+    """Load API keys from page input, environment variables, .env, or Streamlit secrets."""
     keys = {
-        "qwen": st.session_state.get("qwen_key_input", ""),
-        "github": st.session_state.get("github_key_input", ""),
+        "qwen": st.session_state.get("qwen_key_input", "")
+        or os.getenv("DASHSCOPE_API_KEY", "")
+        or os.getenv("QWEN_API_KEY", ""),
+        "github": st.session_state.get("github_key_input", "") or os.getenv("GITHUB_TOKEN", ""),
     }
     try:
         if st.secrets.get("DASHSCOPE_API_KEY"):
@@ -47,6 +53,14 @@ def validate_keys(keys: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def _has_streamlit_secret(*names: str) -> bool:
+    """Safely check Streamlit secrets without requiring a secrets file."""
+    try:
+        return any(bool(st.secrets.get(name)) for name in names)
+    except Exception:
+        return False
+
+
 def _reset_chat_if_source_changed(source_id: str) -> None:
     previous = st.session_state.get("current_source_id")
     if previous != source_id:
@@ -54,360 +68,837 @@ def _reset_chat_if_source_changed(source_id: str) -> None:
     st.session_state["current_source_id"] = source_id
 
 
+def render_workflow_grid(items: list[dict]) -> None:
+    cards = []
+    for idx, item in enumerate(items, start=1):
+        kicker = html_lib.escape(item.get("kicker", f"{idx:02d}"))
+        title = html_lib.escape(item["title"])
+        body = html_lib.escape(item["body"])
+        tone = html_lib.escape(item.get("tone", "blue"))
+        cards.append(
+            f"""
+<article class="workflow-card tone-{tone}">
+    <div class="workflow-step">{kicker}</div>
+    <div class="workflow-title">{title}</div>
+    <div class="workflow-text">{body}</div>
+</article>
+"""
+        )
+    st.markdown(f'<div class="workflow-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_note_card(kicker: str, title: str, body: str, tone: str = "blue") -> None:
+    st.markdown(
+        f"""
+<div class="note-card tone-{html_lib.escape(tone)}">
+    <div class="note-kicker">{html_lib.escape(kicker)}</div>
+    <div class="note-title">{html_lib.escape(title)}</div>
+    <div class="note-body">{html_lib.escape(body)}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_hero_section():
+    st.markdown(
+        """
+<section class="page-shell">
+    <div class="hero-eyebrow">Multi-Modal AI Demo</div>
+    <h1 class="page-title">Multi-Demo</h1>
+    <p class="page-lead">
+        一个面向展示与体验的 AI Demo 页面，
+        支持 PDF 问答、哔哩哔哩视频解析，以及多来源 AI 研究检索。
+    </p>
+    <div class="hero-chip-row">
+        <span class="hero-chip">Qwen Native</span>
+        <span class="hero-chip">Bilibili Ready</span>
+        <span class="hero-chip">Research Search</span>
+        <span class="hero-chip">Streamlit + LangGraph</span>
+    </div>
+    <div class="hero-stat-row">
+        <div class="hero-stat">
+            <div class="hero-stat-value">PDF + 视频</div>
+            <div class="hero-stat-label">文档与视频内容问答</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-value">多源检索</div>
+            <div class="hero-stat-label">论文 图书 仓库 网站 视频</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-value">中文优先</div>
+            <div class="hero-stat-label">研究摘要可切换英文</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-value">Qwen 驱动</div>
+            <div class="hero-stat-label">多模态理解与生成</div>
+        </div>
+    </div>
+    <div class="hero-glance-grid">
+        <article class="glance-card">
+            <div class="glance-kicker">Document QA</div>
+            <strong>上传 PDF 后，直接围绕文档内容发起问答。</strong>
+            <p>支持文本、图片与表格解析，适合展示多模态文档理解能力。</p>
+        </article>
+        <article class="glance-card">
+            <div class="glance-kicker">Research Search</div>
+            <strong>输入一个主题，快速查看多来源研究结果。</strong>
+            <p>系统会并行检索论文、图书、GitHub 仓库、网站和视频，并生成摘要。</p>
+        </article>
+        <article class="glance-card">
+            <div class="glance-kicker">Visual Demo</div>
+            <strong>更清晰的展示布局，更适合直接作为演示页面使用。</strong>
+            <p>界面围绕浏览、输入、检索和结果展示做了统一设计，更适合公开展示。</p>
+        </article>
+    </div>
+</section>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 st.markdown(
     """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap');
 
     :root {
-        --bg: #f6f1e8;
-        --surface: rgba(255, 252, 247, 0.88);
-        --surface-strong: #fffdf8;
-        --ink: #1f2937;
-        --muted: #5b6475;
-        --line: rgba(123, 97, 63, 0.16);
-        --brand: #c8553d;
-        --brand-deep: #8f2d23;
-        --accent: #e5b94b;
-        --shadow: 0 18px 55px rgba(58, 36, 18, 0.10);
+        --bg: #eaf0f8;
+        --surface: #ffffff;
+        --surface-strong: #f7faff;
+        --surface-soft: #eef4fb;
+        --ink: #111827;
+        --ink-soft: #334155;
+        --muted: #5f6b7b;
+        --line: rgba(148, 163, 184, 0.28);
+        --line-strong: rgba(100, 116, 139, 0.34);
+        --brand: #111111;
+        --accent: #0a84ff;
+        --accent-soft: #e7f1ff;
+        --shadow: 0 24px 64px rgba(15, 23, 42, 0.12);
+        --shadow-soft: 0 14px 36px rgba(15, 23, 42, 0.1);
     }
 
-    html, body, [class*="css"]  {
-        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    @keyframes riseIn {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    html,
+    body,
+    [class*="css"] {
+        font-family: "Instrument Sans", "Noto Sans SC", "PingFang SC", sans-serif;
+        color: var(--ink);
     }
 
     .stApp {
         background:
-            radial-gradient(circle at top left, rgba(229, 185, 75, 0.18), transparent 28%),
-            radial-gradient(circle at top right, rgba(200, 85, 61, 0.14), transparent 26%),
-            linear-gradient(180deg, #fbf7f0 0%, #f3ede3 100%);
+            radial-gradient(circle at 12% 10%, rgba(10, 132, 255, 0.11), transparent 18%),
+            radial-gradient(circle at 88% 12%, rgba(94, 92, 230, 0.09), transparent 18%),
+            radial-gradient(circle at 50% 100%, rgba(255, 159, 10, 0.05), transparent 18%),
+            linear-gradient(180deg, #edf3fb 0%, #e6edf7 100%);
         color: var(--ink);
+    }
+
+    [data-testid="stAppViewContainer"] > .main .block-container {
+        max-width: 1320px;
+        padding-top: 2.2rem;
+        padding-bottom: 5rem;
     }
 
     .stApp p,
     .stApp li,
     .stApp label,
     .stApp div[data-testid="stMarkdownContainer"] p {
-        font-size: 3rem;
-        line-height: 1.45;
+        font-size: 1.22rem;
+        line-height: 1.8;
+        color: #334155;
+    }
+
+    .stApp h1,
+    .stApp h2,
+    .stApp h3 {
+        letter-spacing: -0.04em;
         color: var(--ink);
     }
 
-    .stApp h1, .stApp h2, .stApp h3 {
-        letter-spacing: -0.02em;
+    .page-shell {
+        margin-bottom: 2.1rem;
+        padding: 4.6rem 4rem 3.4rem;
+        border-radius: 34px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background:
+            linear-gradient(135deg, #ffffff, #eef5ff),
+            radial-gradient(circle at 85% 20%, rgba(10, 132, 255, 0.08), transparent 20%);
+        box-shadow: var(--shadow);
+        animation: riseIn 0.45s ease-out both;
     }
 
-    .page-shell {
-        margin-bottom: 1.5rem;
+    .hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.55rem 0.95rem;
+        border-radius: 999px;
+        border: 1px solid rgba(10, 132, 255, 0.16);
+        background: #eef5ff;
+        color: #2563eb;
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        box-shadow: 0 8px 20px rgba(10, 132, 255, 0.08);
     }
 
     .page-title {
-        font-size: clamp(3.8rem, 5vw, 5.8rem);
-        line-height: 1.05;
-        margin: 0 0 0.8rem;
-        color: #1d2430;
+        max-width: 10ch;
+        margin: 1rem 0 0.85rem;
+        font-size: clamp(4.2rem, 8vw, 6.6rem);
+        line-height: 0.92;
+        color: #0f172a;
         font-weight: 800;
     }
 
     .page-lead {
+        max-width: 760px;
         margin: 0;
-        max-width: 1000px;
-        color: var(--muted);
-        font-size: 2rem;
-        line-height: 1.55;
+        color: #5f6672;
+        font-size: 1.56rem;
+        line-height: 1.8;
     }
 
-    .top-card {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        padding: 1.4rem 1.45rem;
-        margin: 0 0 1rem;
-        box-shadow: 0 10px 30px rgba(60, 45, 30, 0.05);
+    .hero-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.9rem;
+        margin-top: 2rem;
     }
 
-    .top-card h3 {
-        margin: 0 0 0.75rem;
-        font-size: 2rem;
-        color: #1b2430;
+    .hero-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.86rem 1.15rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+        color: #111827;
+        font-size: 1.08rem;
+        font-weight: 700;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
     }
 
-    .top-card p {
-        font-size: 3.6rem;
-        line-height: 1.42;
+    .hero-chip:nth-child(1) {
+        background: #eef6ff;
     }
 
-    .section-intro {
-        background: rgba(255, 252, 247, 0.76);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        padding: 1rem 1.1rem;
-        margin: 0 0 1.25rem;
-        font-size: 3rem !important;
-        line-height: 1.45 !important;
+    .hero-chip:nth-child(2) {
+        background: #f3eeff;
     }
 
-    .section-intro p {
-        font-size: 3rem !important;
-        line-height: 1.45 !important;
-        margin: 0;
+    .hero-chip:nth-child(3) {
+        background: #edf9f1;
     }
 
-    .top-card strong,
-    .section-intro strong {
-        color: var(--brand-deep);
+    .hero-chip:nth-child(4) {
+        background: #fff6ea;
     }
 
-    .section-header {
-        display: inline-block;
-        border-bottom: 3px solid rgba(200, 85, 61, 0.26);
-        padding-bottom: 0.32rem;
-        margin-bottom: 0.8rem;
-        color: #1b2430;
-        font-size: 3.4rem;
+    .hero-chip:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.11);
+    }
+
+    .hero-stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.9rem;
+        margin-top: 1.35rem;
+    }
+
+    .hero-stat {
+        padding: 1rem 1.05rem;
+        border-radius: 22px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+    }
+
+    .hero-stat-value {
+        margin-bottom: 0.22rem;
+        color: #0f172a;
+        font-size: 1rem;
         font-weight: 800;
     }
 
-    div[data-testid="stTabs"] {
-        margin-top: 1rem;
+    .hero-stat-label {
+        color: #64748b;
+        font-size: 0.92rem;
+        line-height: 1.55;
     }
 
-    div[data-testid="stTabs"] button {
-        font-size: 2rem;
-        font-weight: 700;
+    .hero-glance-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1.35rem;
+        margin-top: 2.35rem;
+    }
+
+    .glance-card {
+        min-height: 100%;
+        padding: 1.8rem;
+        border-radius: 30px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #ffffff;
+        box-shadow: var(--shadow-soft);
+        transition: transform 0.22s ease, box-shadow 0.22s ease;
+        animation: riseIn 0.45s ease-out both;
+        position: relative;
+    }
+
+    .hero-glance-grid .glance-card:nth-child(1) {
+        background: linear-gradient(180deg, #eef6ff, #ffffff);
+    }
+
+    .hero-glance-grid .glance-card:nth-child(2) {
+        background: linear-gradient(180deg, #f4efff, #ffffff);
+    }
+
+    .hero-glance-grid .glance-card:nth-child(3) {
+        background: linear-gradient(180deg, #fff4e8, #ffffff);
+    }
+
+    .glance-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 24px 54px rgba(15, 23, 42, 0.12);
+    }
+
+    .glance-kicker {
+        margin-bottom: 0.9rem;
+        color: #6b7280;
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+
+    .glance-card strong {
+        display: block;
+        margin-bottom: 0.7rem;
+        color: #0f172a;
+        font-size: 1.62rem;
+        line-height: 1.4;
+        font-weight: 800;
+    }
+
+    .glance-card p {
+        margin: 0;
+        color: #5f6672 !important;
+        font-size: 1.12rem !important;
+        line-height: 1.82 !important;
+    }
+
+    .top-card {
+        min-height: 100%;
+        margin: 0 0 1.35rem;
+        padding: 1.95rem 1.95rem 2.1rem;
+        border-radius: 32px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #ffffff;
+        box-shadow: var(--shadow-soft);
+        transition: transform 0.22s ease, box-shadow 0.22s ease;
+        animation: riseIn 0.45s ease-out both;
+        position: relative;
+    }
+
+    .top-card:nth-of-type(1) {
+        background: linear-gradient(180deg, #eef6ff, #ffffff);
+    }
+
+    .top-card:nth-of-type(2) {
+        background: linear-gradient(180deg, #f4efff, #ffffff);
+    }
+
+    .top-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 24px 54px rgba(15, 23, 42, 0.12);
+    }
+
+    .card-kicker {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.42rem 0.8rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: #f5f8fc;
+        color: #64748b;
+        font-size: 0.9rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+
+    .top-card h3 {
+        margin: 1.15rem 0 1rem;
+        font-size: 2.28rem;
+        line-height: 1.22;
+        color: #0f172a;
+    }
+
+    .top-card p {
+        margin: 0 0 1rem;
+        color: #5f6672 !important;
+        font-size: 1.18rem !important;
+        line-height: 1.82 !important;
+    }
+
+    .apple-list {
+        margin: 1.15rem 0 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .apple-list li {
+        position: relative;
+        margin: 0.8rem 0;
+        padding-left: 1.15rem;
+        color: #374151;
+        font-size: 1.14rem;
+        line-height: 1.72;
+    }
+
+    .apple-list li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.68rem;
+        width: 0.48rem;
+        height: 0.48rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #0a84ff, #5e5ce6);
+    }
+
+    .section-header {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 0 1.25rem;
+        padding: 0.64rem 1.02rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        background: #f1f6fc;
+        color: #4d5b6d;
+        font-size: 0.95rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+
+    .section-intro {
+        margin: 0 0 1.8rem;
+        padding: 1.6rem 1.7rem;
+        border-radius: 32px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: linear-gradient(180deg, #f8fbff, #eff5fc);
+        box-shadow: var(--shadow-soft);
+        color: #415062 !important;
+        font-size: 1.2rem !important;
+        line-height: 1.9 !important;
+        animation: riseIn 0.45s ease-out both;
+        position: relative;
+    }
+
+    .section-intro p {
+        margin: 0;
+        color: #415062 !important;
+        font-size: 1.2rem !important;
+        line-height: 1.9 !important;
+    }
+
+    .section-intro strong {
+        color: #0f172a;
+    }
+
+    .workflow-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin: 0 0 1.8rem;
+    }
+
+    .workflow-card {
+        padding: 1.25rem 1.25rem 1.3rem;
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: #ffffff;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .workflow-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+    }
+
+    .workflow-card.tone-blue {
+        background: linear-gradient(180deg, #f1f7ff, #ffffff);
+    }
+
+    .workflow-card.tone-purple {
+        background: linear-gradient(180deg, #f5f1ff, #ffffff);
+    }
+
+    .workflow-card.tone-green {
+        background: linear-gradient(180deg, #f1fbf5, #ffffff);
+    }
+
+    .workflow-card.tone-amber {
+        background: linear-gradient(180deg, #fff8ef, #ffffff);
+    }
+
+    .workflow-step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0 0.68rem;
+        margin-bottom: 0.8rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.07);
+        color: #0f172a;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .workflow-title {
+        margin-bottom: 0.48rem;
+        color: #0f172a;
+        font-size: 1.18rem;
+        line-height: 1.42;
+        font-weight: 800;
+    }
+
+    .workflow-text {
+        color: #526072;
+        font-size: 1rem;
+        line-height: 1.72;
+    }
+
+    .note-card {
+        margin: 0 0 1rem;
+        padding: 1.15rem 1.2rem 1.2rem;
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: #ffffff;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    }
+
+    .note-card.tone-blue {
+        background: linear-gradient(180deg, #f2f8ff, #ffffff);
+    }
+
+    .note-card.tone-purple {
+        background: linear-gradient(180deg, #f5f0ff, #ffffff);
+    }
+
+    .note-card.tone-green {
+        background: linear-gradient(180deg, #f1fbf5, #ffffff);
+    }
+
+    .note-card.tone-amber {
+        background: linear-gradient(180deg, #fff8ef, #ffffff);
+    }
+
+    .note-kicker {
+        margin-bottom: 0.48rem;
+        color: #64748b;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .note-title {
+        margin-bottom: 0.45rem;
+        color: #0f172a;
+        font-size: 1.16rem;
+        line-height: 1.42;
+        font-weight: 800;
+    }
+
+    .note-body {
+        color: #526072;
+        font-size: 1rem;
+        line-height: 1.72;
+    }
+
+    .option-help {
+        margin-top: -0.1rem;
+        padding-left: 0.1rem;
+        color: #6b7280;
+        font-size: 0.92rem;
+        line-height: 1.52;
+    }
+
+    .chat-header-card {
+        margin: 0 0 1rem;
+        padding: 1.15rem 1.2rem 1.2rem;
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: linear-gradient(180deg, #f4f8ff, #ffffff);
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    }
+
+    .chat-header-title {
+        margin-bottom: 0.4rem;
+        color: #0f172a;
+        font-size: 1.22rem;
+        font-weight: 800;
+    }
+
+    .chat-header-meta {
+        color: #526072;
+        font-size: 1rem;
+        line-height: 1.68;
+    }
+
+    div[data-testid="stTabs"] {
+        margin-top: 1.25rem;
     }
 
     div[data-testid="stTabs"] [role="tablist"] {
-        gap: 0.5rem;
-        background: rgba(255, 255, 255, 0.52);
-        border: 1px solid var(--line);
-        padding: 0.4rem;
-        border-radius: 16px;
+        gap: 0.72rem;
+        padding: 0.56rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: #edf3fa;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    div[data-testid="stTabs"] button {
+        font-size: 1.12rem;
+        font-weight: 700;
     }
 
     div[data-testid="stTabs"] [role="tab"] {
-        border-radius: 12px;
-        min-height: 86px;
-        padding: 0 1.4rem;
+        min-height: 3.95rem;
+        padding: 0 1.45rem;
+        border-radius: 999px;
+        color: #4f5f72;
+        transition: all 0.18s ease;
+    }
+
+    div[data-testid="stTabs"] [role="tab"]:hover {
+        color: #1f2937;
+        background: rgba(255, 255, 255, 0.66);
     }
 
     div[data-testid="stTabs"] [aria-selected="true"] {
-        background: linear-gradient(135deg, rgba(200, 85, 61, 0.12), rgba(229, 185, 75, 0.18));
-        color: var(--brand-deep);
+        background: linear-gradient(135deg, #e9f3ff, #f2edff);
+        color: #111827;
+        box-shadow: 0 12px 26px rgba(10, 132, 255, 0.18);
     }
 
     div[data-testid="stForm"],
     div[data-testid="stExpander"],
     div[data-testid="stFileUploader"],
-    div[data-testid="stMetric"] {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 22px;
-        box-shadow: 0 8px 28px rgba(58, 36, 18, 0.05);
+    div[data-testid="stMetric"],
+    [data-testid="stChatMessage"],
+    .stAlert {
+        border-radius: 30px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: #ffffff;
+        box-shadow: var(--shadow-soft);
+    }
+
+    div[data-testid="stForm"],
+    div[data-testid="stExpander"] {
+        padding: 0.65rem 0.8rem;
     }
 
     div[data-testid="stExpander"] {
         overflow: hidden;
-        margin-bottom: 0.9rem;
+        margin-bottom: 1.25rem;
     }
 
     details {
-        border-radius: 18px;
+        border-radius: 26px;
     }
 
     div[data-testid="stMetric"] {
-        padding: 0.4rem 0.25rem;
+        padding: 1.2rem 1.2rem 1.28rem;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 20px 42px rgba(15, 23, 42, 0.12);
     }
 
     [data-testid="stMetricLabel"] {
-        font-size: 1.8rem;
+        color: #6b7280;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
     }
 
     [data-testid="stMetricValue"] {
-        font-size: 3rem;
+        color: #0f172a;
+        font-size: 2.8rem;
+        font-weight: 800;
+    }
+
+    .stTextInput label,
+    .stSlider label,
+    .stFileUploader label,
+    .stSelectbox label,
+    .stRadio label {
+        color: #111827;
+        font-size: 1.16rem !important;
+        font-weight: 700 !important;
     }
 
     .stTextInput input,
     .stNumberInput input,
     .stTextArea textarea {
-        font-size: 4rem !important;
-        min-height: 7.2rem;
-        border-radius: 20px !important;
-        border: 1px solid rgba(123, 97, 63, 0.18) !important;
-        background: rgba(255, 253, 248, 0.95) !important;
-        padding: 1rem 1.2rem !important;
+        min-height: 4.15rem;
+        padding: 0.95rem 1.15rem !important;
+        border-radius: 22px !important;
+        border: 1px solid var(--line-strong) !important;
+        background: #ffffff !important;
+        color: #111827 !important;
+        font-size: 1.24rem !important;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        transition: box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stTextArea textarea:focus {
+        border-color: rgba(10, 132, 255, 0.45) !important;
+        box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12) !important;
     }
 
     .stTextInput input::placeholder,
-    .stTextArea textarea::placeholder {
-        font-size: 3.2rem !important;
-        color: #7a7f8c !important;
+    .stTextArea textarea::placeholder,
+    .stChatInput input::placeholder {
+        color: #9aa1ad !important;
+        font-size: 1.12rem !important;
         opacity: 1 !important;
     }
 
-    .stTextInput label,
-    .stSlider label,
-    .stFileUploader label {
-        font-size: 4rem !important;
-        font-weight: 700 !important;
+    .stTextInput div[data-baseweb="input"],
+    .stNumberInput div[data-baseweb="input"],
+    .stChatInput div[data-baseweb="base-input"] {
+        border-radius: 22px !important;
+        border: 1px solid rgba(148, 163, 184, 0.18) !important;
+        background: transparent !important;
     }
 
     .stCaption,
     .stApp [data-testid="stCaptionContainer"],
     .stApp [data-testid="stCaptionContainer"] p,
-    .stApp .stMarkdown small {
-        font-size: 3rem !important;
-        line-height: 1.4 !important;
-        color: var(--muted) !important;
-    }
-
+    .stApp .stMarkdown small,
     .stFileUploader small,
     .stTextInput div[data-baseweb="input"] + div,
     .stSlider p {
-        font-size: 3rem !important;
+        color: #7b8190 !important;
+        font-size: 1.02rem !important;
+        line-height: 1.72 !important;
     }
 
     .stCheckbox {
-        padding: 0.8rem 0;
+        padding: 0.38rem 0;
     }
 
-    .stCheckbox [data-testid="stCheckbox"] > label,
-    .stCheckbox label {
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        flex-wrap: nowrap !important;
-        gap: 1rem !important;
-        font-size: 1.45rem !important;
-        font-weight: 600 !important;
-    }
-
+    .stCheckbox label,
     .stCheckbox p {
-        font-size: 1.45rem !important;
-        line-height: 1.4 !important;
-        white-space: nowrap !important;
-        margin: 0 !important;
-    }
-
-    .stCheckbox [data-testid="stTooltipIcon"],
-    .stCheckbox [data-testid="stBaseButton-help"] {
-        display: inline-flex !important;
-        align-items: center !important;
-        align-self: center !important;
-        margin-left: 0.3rem !important;
-        flex: 0 0 auto !important;
-    }
-
-    .stCheckbox [data-testid="stTooltipIcon"] button,
-    .stCheckbox [data-testid="stBaseButton-help"] {
-        min-width: 2.4rem !important;
-        min-height: 2.4rem !important;
-    }
-
-    .stCheckbox [data-testid="stTooltipIcon"] svg,
-    .stCheckbox [data-testid="stBaseButton-help"] svg {
-        width: 1.5rem !important;
-        height: 1.5rem !important;
+        color: #1f2937 !important;
+        font-size: 1.02rem !important;
+        font-weight: 600 !important;
+        line-height: 1.58 !important;
     }
 
     .stCheckbox [data-baseweb="checkbox"] {
-        transform: scale(2.4);
+        transform: scale(1.18);
         transform-origin: left center;
-        margin-right: 1.6rem !important;
+        margin-right: 0.7rem !important;
     }
 
     .stCheckbox [data-baseweb="checkbox"] > div {
-        width: 2.2rem !important;
-        height: 2.2rem !important;
-        border-radius: 0.45rem !important;
+        border-radius: 0.4rem !important;
     }
 
-    .stCheckbox [data-baseweb="checkbox"] svg {
-        width: 1.6rem !important;
-        height: 1.6rem !important;
+    .stRadio [role="radiogroup"] label {
+        gap: 0.9rem !important;
+    }
+
+    .stRadio input[type="radio"] {
+        transform: scale(1.22);
+        accent-color: #111827;
     }
 
     .stButton > button,
     .stDownloadButton > button,
     .stLinkButton > a {
-        min-height: 7rem;
-        border-radius: 20px !important;
-        font-size: 3.1rem !important;
+        min-height: 4.1rem;
+        padding: 0.96rem 1.8rem !important;
+        border-radius: 999px !important;
+        border: 1px solid rgba(17, 24, 39, 0.06) !important;
+        font-size: 1.14rem !important;
         font-weight: 700 !important;
-        padding: 1.2rem 1.8rem !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
     }
 
     .stButton > button {
-        background: linear-gradient(135deg, #c8553d 0%, #ae3e30 100%);
+        background: linear-gradient(135deg, #0f172a 0%, #0f3d91 58%, #5e5ce6 100%);
         color: white;
-        border: none;
-        box-shadow: 0 12px 22px rgba(200, 85, 61, 0.22);
+        box-shadow: 0 14px 28px rgba(58, 76, 196, 0.22);
     }
 
     .stButton > button:hover,
     .stDownloadButton > button:hover,
     .stLinkButton > a:hover {
         transform: translateY(-1px);
-        box-shadow: 0 14px 24px rgba(200, 85, 61, 0.22);
-    }
-
-    .stAlert {
-        border-radius: 18px;
-        font-size: 3.2rem;
-    }
-
-    .stAlert p,
-    .stAlert div {
-        font-size: 3.2rem !important;
-        line-height: 1.4 !important;
-    }
-
-    .stSelectbox label,
-    .stRadio label {
-        font-size: 3.8rem !important;
-    }
-
-    .stRadio [role="radiogroup"] label {
-        gap: 1rem !important;
-    }
-
-    .stRadio input[type="radio"] {
-        transform: scale(2.5);
-        accent-color: var(--brand);
+        box-shadow: 0 18px 34px rgba(58, 76, 196, 0.26);
     }
 
     .stChatInput input {
-        font-size: 3.8rem !important;
-        min-height: 9rem !important;
-    }
-
-    .stTextInput div[data-baseweb="input"],
-    .stChatInput div[data-baseweb="base-input"],
-    .stTextArea textarea {
-        min-height: 7rem !important;
+        font-size: 1.2rem !important;
     }
 
     .stChatInput div[data-baseweb="base-input"] {
-        min-height: 9rem !important;
+        min-height: 4.8rem !important;
+        padding: 0.72rem 1rem !important;
         border-radius: 24px !important;
-        padding: 0.8rem 1rem !important;
-    }
-
-    .stChatInput input::placeholder {
-        font-size: 3.2rem !important;
+        border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        background: #ffffff !important;
+        box-shadow: var(--shadow-soft);
     }
 
     .stFileUploader section {
-        padding: 1.2rem !important;
-        border-radius: 20px !important;
+        padding: 1.25rem !important;
+        border-radius: 26px !important;
     }
 
     button[title],
     [data-testid="stTooltipIcon"] button,
-    [data-testid="stBaseButton-help"] {
-        min-width: 4.2rem !important;
-        min-height: 4.2rem !important;
+    [data-testid="stBaseButton-help"],
+    .stTextInput button,
+    .stChatInput button,
+    .stNumberInput button,
+    .stSelectbox button {
+        min-width: 2.8rem !important;
+        min-height: 2.8rem !important;
     }
 
     button[title] svg,
@@ -417,42 +908,83 @@ st.markdown(
     .stChatInput button svg,
     .stNumberInput button svg,
     .stSelectbox button svg {
-        width: 2.8rem !important;
-        height: 2.8rem !important;
+        width: 1.1rem !important;
+        height: 1.1rem !important;
     }
 
-    .stTextInput button,
-    .stChatInput button,
-    .stNumberInput button,
-    .stSelectbox button {
-        min-width: 4.4rem !important;
-        min-height: 4.4rem !important;
+    .stAlert {
+        padding: 1rem 1.2rem;
+        border: 1px solid rgba(148, 163, 184, 0.22);
     }
 
-    .stTextInput [role="button"],
-    .stChatInput [role="button"] {
-        transform: scale(1.8);
-        transform-origin: center;
-    }
-
-    [data-testid="stMetricLabel"] {
-        font-size: 2.8rem;
-    }
-
-    [data-testid="stMetricValue"] {
-        font-size: 4rem;
+    .stAlert p,
+    .stAlert div {
+        color: #334155 !important;
+        font-size: 1.08rem !important;
+        line-height: 1.76 !important;
     }
 
     [data-testid="stChatMessage"] {
-        background: rgba(255, 252, 247, 0.82);
-        border: 1px solid var(--line);
-        border-radius: 22px;
-        padding: 0.8rem 1rem;
+        padding: 1.2rem 1.3rem;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    [data-testid="stChatMessage"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 22px 50px rgba(15, 23, 42, 0.12);
+    }
+
+    .page-shell::after,
+    .glance-card::after,
+    .top-card::after,
+    .section-intro::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    }
+
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] div {
+        font-size: 1.12rem !important;
+        line-height: 1.84 !important;
+    }
+
+    hr {
+        margin: 2.6rem 0 !important;
+        border-top: 1px solid rgba(15, 23, 42, 0.08) !important;
     }
 
     @media (max-width: 1100px) {
+        [data-testid="stAppViewContainer"] > .main .block-container {
+            padding-top: 1.2rem;
+        }
+
+        .page-shell {
+            padding: 3.4rem 1.5rem 2.6rem;
+            border-radius: 32px;
+        }
+
+        .page-title {
+            font-size: clamp(3.4rem, 12vw, 4.8rem);
+        }
+
         .page-lead {
-            font-size: 2rem;
+            font-size: 1.24rem;
+        }
+
+        .hero-glance-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .hero-stat-row {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .workflow-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>
@@ -461,16 +993,23 @@ st.markdown(
 )
 
 def render_top_panels(keys: dict):
-    col_info, col_config = st.columns([1.6, 1], gap="large")
+    col_info, col_config = st.columns([1.35, 1], gap="large")
 
     with col_info:
         st.markdown(
             """
 <div class="top-card">
-    <h3>项目说明</h3>
-    <p><strong>文档与视频问答</strong>：上传 PDF 或粘贴哔哩哔哩视频链接，建立索引后直接进行问答。</p>
-    <p><strong>研究探索</strong>：围绕一个 AI / ML 主题，同时检索论文、图书、GitHub 仓库、网站和视频。</p>
-    <p><strong>底层能力</strong>：千问负责推理与图像理解，ChromaDB 负责检索，LangGraph 负责流程编排。</p>
+    <div class="card-kicker">Demo Overview</div>
+    <h3>一个集中展示文档问答、视频解析与研究检索能力的 AI Demo 页面。</h3>
+    <p>
+        页面分为两个主要能力区域：文档与视频问答，以及 AI 研究探索。
+        你可以直接上传内容、输入链接或发起主题检索，快速体验完整流程。
+    </p>
+    <ul class="apple-list">
+        <li>支持 PDF 文本、图片与表格的多模态解析。</li>
+        <li>支持哔哩哔哩视频链接的字幕与元信息分析。</li>
+        <li>支持 AI / ML 主题的多来源研究检索与摘要生成。</li>
+    </ul>
 </div>
 """,
             unsafe_allow_html=True,
@@ -480,22 +1019,25 @@ def render_top_panels(keys: dict):
         st.markdown(
             """
 <div class="top-card">
-    <h3>运行配置</h3>
+    <div class="card-kicker">Run Setup</div>
+    <h3>填写运行所需的 API 配置后，即可开始体验主要功能。</h3>
+    <p>
+        支持从 Streamlit Secrets 自动加载，也支持在当前页面手动输入。
+        配置完成后，可以直接体验索引、问答和研究检索流程。
+    </p>
 </div>
 """,
             unsafe_allow_html=True,
         )
 
-        keys_from_secrets = False
-        try:
-            keys_from_secrets = bool(st.secrets.get("DASHSCOPE_API_KEY") or st.secrets.get("QWEN_API_KEY"))
-        except Exception:
-            keys_from_secrets = False
+        qwen_from_secrets = _has_streamlit_secret("DASHSCOPE_API_KEY", "QWEN_API_KEY")
+        qwen_from_env = bool(os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY"))
+        github_from_secrets = _has_streamlit_secret("GITHUB_TOKEN")
+        github_from_env = bool(os.getenv("GITHUB_TOKEN"))
 
-        if keys_from_secrets:
-            st.success("已从 Streamlit Secrets 加载千问密钥")
-            if keys.get("github"):
-                st.info("GitHub Token 已从 Secrets 加载")
+        if qwen_from_secrets or qwen_from_env:
+            source = "Streamlit Secrets" if qwen_from_secrets else ".env / 环境变量"
+            st.success(f"已从 {source} 加载千问密钥")
         else:
             st.session_state["qwen_key_input"] = st.text_input(
                 "千问 API Key *",
@@ -503,6 +1045,11 @@ def render_top_panels(keys: dict):
                 type="password",
                 help="填写 DASHSCOPE_API_KEY 或兼容的 Qwen API Key。",
             )
+
+        if github_from_secrets or github_from_env:
+            source = "Streamlit Secrets" if github_from_secrets else ".env / 环境变量"
+            st.info(f"已从 {source} 加载 GitHub Token")
+        else:
             st.session_state["github_key_input"] = st.text_input(
                 "GitHub Token（可选）",
                 value=keys["github"],
@@ -519,10 +1066,21 @@ def render_chat_section(keys: dict):
 
     valid, err = validate_keys(keys)
 
-    st.markdown("### 💬 开始提问")
-    st.caption(f"当前知识源：**{source_name}**")
-    if st.session_state.get("current_source_url"):
-        st.link_button("查看源链接", st.session_state["current_source_url"], use_container_width=False)
+    header_col, action_col = st.columns([4, 1])
+    with header_col:
+        st.markdown(
+            f"""
+<div class="chat-header-card">
+    <div class="note-kicker">Chat Session</div>
+    <div class="chat-header-title">基于当前内容继续提问</div>
+    <div class="chat-header-meta">当前内容：{html_lib.escape(source_name)}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with action_col:
+        if st.session_state.get("current_source_url"):
+            st.link_button("查看源链接", st.session_state["current_source_url"], use_container_width=True)
 
     if "rag_messages" not in st.session_state:
         st.session_state["rag_messages"] = []
@@ -542,7 +1100,7 @@ def render_chat_section(keys: dict):
             st.markdown(query)
 
         with st.chat_message("assistant"):
-            with st.spinner("正在检索文本、图片和表格上下文……"):
+            with st.spinner("正在检索相关内容……"):
                 try:
                     from src.rag_pipeline import answer_query
                     from src.ui_components import render_retrieved_context
@@ -559,7 +1117,7 @@ def render_chat_section(keys: dict):
                     st.markdown(answer)
 
                     if retrieved:
-                        with st.expander("查看召回上下文"):
+                        with st.expander("查看检索内容"):
                             render_retrieved_context(retrieved)
 
                     st.session_state["rag_messages"].append({"role": "assistant", "content": answer})
@@ -586,14 +1144,22 @@ def render_rag_tab(keys: dict):
 """,
         unsafe_allow_html=True,
     )
+    render_workflow_grid(
+        [
+            {"kicker": "01", "title": "导入内容", "body": "上传 PDF 或粘贴哔哩哔哩链接，开始本轮内容分析。", "tone": "blue"},
+            {"kicker": "02", "title": "生成索引", "body": "系统会整理文本、图片、表格或字幕，并建立检索数据。", "tone": "purple"},
+            {"kicker": "03", "title": "发起问答", "body": "索引完成后可以直接提问，查看基于当前内容的回答结果。", "tone": "amber"},
+        ]
+    )
 
     valid, err = validate_keys(keys)
 
     tab_pdf, tab_bilibili = st.tabs(["📄 PDF 文档", "📺 哔哩哔哩视频"])
 
     with tab_pdf:
-        col_upload, col_options = st.columns([3, 2])
+        col_upload, col_options = st.columns([2.8, 2.2])
         with col_upload:
+            render_note_card("PDF Demo", "适合论文、报告、教材与手册。", "上传后会自动抽取文本、图片与表格，用于后续展示问答能力。", tone="blue")
             uploaded_file = st.file_uploader(
                 "上传 PDF 文档",
                 type=["pdf"],
@@ -601,12 +1167,15 @@ def render_rag_tab(keys: dict):
             )
 
         with col_options:
+            render_note_card("Index Options", "按需关闭部分处理步骤。", "如果只需要演示正文问答，可以跳过图片或表格处理来加快索引。", tone="purple")
             st.markdown("**索引选项**")
-            skip_images = st.checkbox("跳过图片理解", value=False, key="skip_images")
-            st.caption("更快，但不会理解图表和插图。")
-
-            skip_tables = st.checkbox("跳过表格处理", value=False, key="skip_tables")
-            st.caption("更快，但不会理解结构化表格信息。")
+            option_col1, option_col2 = st.columns(2, gap="medium")
+            with option_col1:
+                skip_images = st.checkbox("跳过图片理解", value=False, key="skip_images")
+                st.markdown('<div class="option-help">更快，但不会理解图表和插图。</div>', unsafe_allow_html=True)
+            with option_col2:
+                skip_tables = st.checkbox("跳过表格处理", value=False, key="skip_tables")
+                st.markdown('<div class="option-help">更快，但不会理解结构化表格信息。</div>', unsafe_allow_html=True)
 
         if uploaded_file is not None:
             doc_name = Path(uploaded_file.name).stem
@@ -617,39 +1186,45 @@ def render_rag_tab(keys: dict):
             do_index = st.button("索引 PDF", type="primary", use_container_width=True, key="index_pdf")
             if do_index:
                 if not valid:
-                    st.error(f"无法索引：{err}")
-                else:
-                    with st.spinner("正在解析并索引 PDF……"):
-                        try:
-                            from src.rag_pipeline import index_document
-                            from src.ui_components import render_index_stats
+                    st.warning(f"{err}。将先建立可检索索引；问答生成前仍需要配置千问 API Key。")
+                with st.spinner("正在解析并索引 PDF……"):
+                    try:
+                        from src.rag_pipeline import index_document
+                        from src.ui_components import render_index_stats
 
-                            stats = index_document(
-                                file_path=upload_path,
-                                doc_name=doc_name,
-                                qwen_api_key=keys["qwen"],
-                                skip_images=skip_images,
-                                skip_tables=skip_tables,
-                            )
-                            if stats.get("error"):
-                                st.warning(f"部分步骤执行异常：{stats['error']}")
+                        stats = index_document(
+                            file_path=upload_path,
+                            doc_name=doc_name,
+                            qwen_api_key=keys["qwen"],
+                            skip_images=skip_images,
+                            skip_tables=skip_tables,
+                        )
+                        if stats.get("error"):
+                            st.warning(f"部分步骤执行异常：{stats['error']}")
 
-                            _reset_chat_if_source_changed(f"pdf::{doc_name}")
-                            st.session_state["current_source_name"] = doc_name
-                            st.session_state["current_source_url"] = ""
+                        _reset_chat_if_source_changed(f"pdf::{doc_name}")
+                        st.session_state["current_source_name"] = doc_name
+                        st.session_state["current_source_url"] = ""
 
+                        has_indexed_content = any(
+                            stats.get(key, 0) > 0 for key in ("text_count", "image_count", "table_count")
+                        )
+                        if has_indexed_content:
                             st.success("PDF 索引完成")
-                            render_index_stats(
-                                stats.get("text_count", 0),
-                                stats.get("image_count", 0),
-                                stats.get("table_count", 0),
-                            )
-                        except Exception as e:
-                            st.error(f"索引失败：{e}")
-                            st.code(traceback.format_exc())
+                        else:
+                            st.warning("PDF 已处理，但没有索引到可用内容。请检查文件是否为扫描件、加密文件或空白文档。")
+                        render_index_stats(
+                            stats.get("text_count", 0),
+                            stats.get("image_count", 0),
+                            stats.get("table_count", 0),
+                        )
+                    except Exception as e:
+                        st.error(f"索引失败：{e}")
+                        st.code(traceback.format_exc())
 
     with tab_bilibili:
-        st.markdown("输入一个哔哩哔哩视频链接，系统会优先提取字幕与元信息，再接入当前 RAG 问答流程。")
+        render_note_card("Bilibili Demo", "优先使用字幕与元信息建立内容分析。", "适合课程视频、讲解视频与资讯内容。字幕越完整，展示效果通常越好。", tone="amber")
+        st.markdown("输入一个哔哩哔哩视频链接，系统会提取字幕与视频信息，并接入后续问答。")
         bilibili_url = st.text_input(
             "哔哩哔哩视频链接",
             placeholder="例如：https://www.bilibili.com/video/BV1xx411c7mD",
@@ -659,9 +1234,9 @@ def render_rag_tab(keys: dict):
         if do_parse:
             if not bilibili_url.strip():
                 st.warning("请先输入哔哩哔哩视频链接。")
-            elif not valid:
-                st.error(f"无法解析：{err}")
             else:
+                if not valid:
+                    st.warning(f"{err}。视频解析和索引会继续执行；后续问答生成前仍需要配置千问 API Key。")
                 with st.spinner("正在抓取视频元信息与字幕……"):
                     try:
                         from src.tools.bilibili_tool import normalize_bilibili_url
@@ -716,8 +1291,21 @@ def render_research_tab(keys: dict):
 """,
         unsafe_allow_html=True,
     )
+    render_workflow_grid(
+        [
+            {"kicker": "Refine", "title": "输入主题", "body": "主题越具体，检索出的论文、仓库、网站和视频通常越聚焦。", "tone": "blue"},
+            {"kicker": "Search", "title": "执行检索", "body": "系统会同时查看论文、图书、GitHub、网站和哔哩哔哩内容。", "tone": "green"},
+            {"kicker": "Summary", "title": "查看摘要", "body": "千问会基于多来源结果生成一份更适合浏览的主题概览。", "tone": "purple"},
+        ]
+    )
 
     output_language = "en" if output_language_label == "English" else "zh"
+
+    hint_col1, hint_col2 = st.columns(2)
+    with hint_col1:
+        render_note_card("Query Design", "主题越具体，结果通常越好。", "可以直接写问题、任务目标，或者一个明确的模型 / 方法方向。", tone="blue")
+    with hint_col2:
+        render_note_card("Priority Hints", "你可以给系统一些偏好条件。", "例如指定优先 UP 主、仓库 URL 或论文标题，让结果更贴近展示目标。", tone="green")
 
     with st.form("research_form"):
         st.markdown("### 🔍 检索主题")
@@ -760,7 +1348,7 @@ def render_research_tab(keys: dict):
         if not valid:
             st.warning(f"⚠️ {err}，仍会执行检索，但 AI 摘要能力会受限。")
 
-        progress_bar = st.progress(0, text="开始研究流程……")
+        progress_bar = st.progress(0, text="开始检索……")
         status_text = st.empty()
 
         try:
@@ -804,6 +1392,12 @@ def render_research_tab(keys: dict):
             c5.metric("视频", len(result.get("videos", [])))
 
             if result.get("summary"):
+                render_note_card(
+                    "Summary",
+                    "下面是由千问整理的结果摘要。",
+                    "可以先浏览整体概览，再查看论文、仓库、网站和视频等分类结果。",
+                    tone="purple" if output_language == "zh" else "blue",
+                )
                 st.markdown("### 🤖 AI Research Summary" if output_language == "en" else "### 🤖 AI 研究摘要")
                 st.info(result["summary"])
 
@@ -856,18 +1450,7 @@ def render_research_tab(keys: dict):
 
 
 def main():
-    st.markdown(
-        """
-    <div class="page-shell">
-        <h1 class="page-title">多模态 RAG 研究助手</h1>
-        <p class="page-lead">
-            支持 PDF 多模态问答、哔哩哔哩视频分析，以及论文、图书、代码仓库、网站和视频的联合检索。
-        </p>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
+    render_hero_section()
     keys = get_api_keys()
     render_top_panels(keys)
 

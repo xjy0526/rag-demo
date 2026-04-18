@@ -4,6 +4,7 @@ research_agent.py — LangGraph-based research agent.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
 from typing import Optional, TypedDict
 
@@ -272,6 +273,31 @@ Your output must be entirely in English."""
     return state
 
 
+def _run_searches_parallel(state: ResearchState) -> ResearchState:
+    """Run independent search providers concurrently after the topic is refined."""
+    search_jobs = {
+        "papers": node_search_papers,
+        "books": node_search_books,
+        "repos": node_search_repos,
+        "websites": node_search_websites,
+        "videos": node_search_videos,
+    }
+    with ThreadPoolExecutor(max_workers=len(search_jobs)) as executor:
+        futures = {
+            executor.submit(node, dict(state)): result_key
+            for result_key, node in search_jobs.items()
+        }
+        for future in as_completed(futures):
+            result_key = futures[future]
+            try:
+                branch_state = future.result()
+                state[result_key] = branch_state.get(result_key, [])
+            except Exception as e:
+                print(f"[research_agent] Parallel search failed for {result_key}: {e}")
+                state[result_key] = []
+    return state
+
+
 def build_research_graph():
     """Build and compile the LangGraph research workflow."""
     try:
@@ -327,12 +353,12 @@ def run_research(
     )
 
     try:
-        graph = build_research_graph()
-        if graph:
-            return graph.invoke(state)
-        raise RuntimeError("Graph compilation failed")
+        state = node_refine_query(state)
+        state = _run_searches_parallel(state)
+        state = node_generate_summary(state)
+        return state
     except Exception as e:
-        print(f"[research_agent] Graph execution failed ({e}), running sequentially")
+        print(f"[research_agent] Parallel execution failed ({e}), running sequentially")
         state = node_refine_query(state)
         state = node_search_papers(state)
         state = node_search_books(state)

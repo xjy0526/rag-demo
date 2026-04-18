@@ -142,9 +142,9 @@ def process_tables(tables: list[dict], llm, doc_name: str) -> list[dict]:
             try:
                 table_str = _format_table_as_text(raw_rows)
                 prompt = (
-                    "Convert this table to a natural language description for semantic search. "
-                    "Be concise but include all key values and structure.\n\n"
-                    f"Table:\n{table_str}\n\nDescription:"
+                    "请把下面的表格转换成适合语义检索的中文自然语言描述。"
+                    "要求简洁，但保留关键字段、数值、行列结构和主要结论。\n\n"
+                    f"表格：\n{table_str}\n\n中文描述："
                 )
                 from src.llm_clients import call_llm
                 description = call_llm(llm, prompt, fallback=table_str)
@@ -173,9 +173,9 @@ def caption_images_with_qwen(image_paths: list[str], qwen_api_key: str) -> list[
 
         try:
             prompt = (
-                "Describe this image in detail for a document search system. "
-                "Include: what the image shows, any visible text or data, "
-                "type of visualization (chart/diagram/photo/table), and key insights."
+                "请为文档检索系统详细描述这张图片。"
+                "请包含：图片展示了什么、可见文字或数据、图像类型"
+                "（图表/流程图/照片/表格等），以及可以支持问答的关键信息。"
             )
             from src.llm_clients import call_qwen_vision
             caption = call_qwen_vision(

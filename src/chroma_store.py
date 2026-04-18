@@ -9,7 +9,9 @@ Replaces FAISS with ChromaDB for:
 
 from __future__ import annotations
 import hashlib
+import logging
 import os
+import re
 import traceback
 from typing import Optional
 
@@ -18,8 +20,10 @@ from src.config import (
     COLLECTION_TEXT,
     COLLECTION_IMAGES,
     COLLECTION_TABLES,
-    EMBED_MODEL,
 )
+
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 
 
 class _HashEmbeddingFunction:
@@ -40,7 +44,7 @@ class _HashEmbeddingFunction:
 
     def _embed_text(self, text: str) -> list[float]:
         vec = [0.0] * self.dim
-        tokens = (text or "").lower().split()
+        tokens = _tokenize_for_hash_embedding(text)
         if not tokens:
             return vec
 
@@ -55,6 +59,15 @@ class _HashEmbeddingFunction:
         if norm > 0:
             vec = [v / norm for v in vec]
         return vec
+
+
+def _tokenize_for_hash_embedding(text: str) -> list[str]:
+    """Tokenize English words and Chinese characters for the local fallback."""
+    tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", (text or "").lower())
+    chinese_chars = [token for token in tokens if len(token) == 1 and "\u4e00" <= token <= "\u9fff"]
+    if len(chinese_chars) > 1:
+        tokens.extend("".join(chinese_chars[i : i + 2]) for i in range(len(chinese_chars) - 1))
+    return tokens
 
 
 class _ResilientEmbeddingFunction:
@@ -93,15 +106,20 @@ def get_client():
     """Return a persistent ChromaDB client."""
     try:
         import chromadb
+        from chromadb.config import Settings
+
         os.makedirs(CHROMA_PERSIST_DIR, exist_ok=True)
-        return chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+        return chromadb.PersistentClient(
+            path=CHROMA_PERSIST_DIR,
+            settings=Settings(anonymized_telemetry=False),
+        )
     except Exception as e:
         print(f"[chroma_store] ChromaDB client init failed: {e}")
         return None
 
 
 def get_or_create_collection(collection_name: str):
-    """Get or create a ChromaDB collection with sentence-transformer embeddings."""
+    """Get or create a ChromaDB collection with the configured embedding function."""
     try:
         client = get_client()
         if client is None:
@@ -159,7 +177,10 @@ def query_collection(
         collection = get_or_create_collection(collection_name)
         if collection is None:
             return []
-        kwargs = {"query_texts": [query_text], "n_results": min(n_results, max(collection.count(), 1))}
+        count = collection.count()
+        if count <= 0 or not query_text.strip():
+            return []
+        kwargs = {"query_texts": [query_text], "n_results": min(max(n_results, 1), count)}
         if where:
             kwargs["where"] = where
         results = collection.query(**kwargs)

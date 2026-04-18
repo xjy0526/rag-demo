@@ -17,6 +17,7 @@ conda-env/
 
 # Environment
 .env
+.streamlit/secrets.toml
 *.log
 
 # Docker
